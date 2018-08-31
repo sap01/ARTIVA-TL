@@ -273,6 +273,55 @@ rm(artiva.out)
 ##------------------------------------------------------------
 
 ##------------------------------------------------------------
+## Begin: Generate unrolled DBN adjacency matrices from unrolled
+## DBN adjacency lists
+##------------------------------------------------------------
+
+## Initialize the list of unrolled DBN adjacency matrices
+unrolled.dbn.adj.matrix.list <- vector(mode = 'list', length = num.timepts)
+
+## Initialize each time pt specific adjacency matrix.
+## Rows = source nodes, cols =  target nodes.
+time.pt.spec.adj.matrix <- matrix(0, nrow = num.nodes, ncol = num.nodes)
+rownames(time.pt.spec.adj.matrix) <- node.names
+colnames(time.pt.spec.adj.matrix) <- node.names
+for (time.pt.idx in 1:length(unrolled.dbn.adj.matrix.list)) {
+  unrolled.dbn.adj.matrix.list[[time.pt.idx]] <- time.pt.spec.adj.matrix
+}
+rm(time.pt.idx)
+rm(time.pt.spec.adj.matrix)
+
+num.edges <- nrow(unrolled.dbn.adj.list)
+if (num.edges > 0) {
+  for (edge.idx in 1:num.edges) {
+    
+    ## Using 'as.character()' is crucial. Otherwise, they 
+    ## are considered as factors and incorrect outputs
+    ## are observed.
+    src.node.name <- as.character(unrolled.dbn.adj.list[edge.idx, 'Parent'])
+    tgt.node.name <- as.character(unrolled.dbn.adj.list[edge.idx, 'Target'])
+    
+    start.time.pt <- unrolled.dbn.adj.list[edge.idx, 'CPstart']
+    end.time.pt <- unrolled.dbn.adj.list[edge.idx, 'CPend']
+    
+    for (time.pt.idx in start.time.pt:end.time.pt) {
+      adj.matrix <- unrolled.dbn.adj.matrix.list[[time.pt.idx]]
+      adj.matrix[src.node.name, tgt.node.name] <- 1
+      unrolled.dbn.adj.matrix.list[[time.pt.idx]] <- adj.matrix
+    }
+    rm(time.pt.idx)
+    
+  }
+  rm(edge.idx)
+}
+
+save(unrolled.dbn.adj.matrix.list, file = paste(output.dirname, 'unrolled.dbn.adj.matrix.list.RData', sep = '/'))
+##------------------------------------------------------------
+## End: Generate unrolled DBN adjacency matrices from unrolled
+## DBN adjacency lists
+##------------------------------------------------------------
+
+##------------------------------------------------------------
 ## Begin: Roll up the unrolled DBN to generate a rolled DBN adjacency matrix
 ##------------------------------------------------------------
 
@@ -287,8 +336,11 @@ if (num.edges > 0)
 {
   for (edge.idx in 1:num.edges)
   {
-    src.node.name <- unrolled.dbn.adj.list[edge.idx, 'Parent']
-    tgt.node.name <- unrolled.dbn.adj.list[edge.idx, 'Target']
+    ## Using 'as.character()' is crucial. Otherwise, they 
+    ## are considered as factors and incorrect outputs
+    ## are observed.
+    src.node.name <- as.character(unrolled.dbn.adj.list[edge.idx, 'Parent'])
+    tgt.node.name <- as.character(unrolled.dbn.adj.list[edge.idx, 'Target'])
     rolled.dbn.adj.matrix[src.node.name, tgt.node.name] <- 1
     
   }
@@ -307,11 +359,10 @@ adjmxToSif(rolled.dbn.adj.matrix, output.dirname)
 
 ## If the true rolled network is known a prior, then evaluate the performance
 ## metrics of the predicted rolled network.
-if (true.net.filename != '')
-{
-  predicted.net.adj.matrix <- rolled.dbn.adj.matrix
+if (true.net.filename != '') {
   
   ## Loads R obj 'true.net.adj.matrix'
+  true.net.adj.matrix <- NULL
   load(true.net.filename)
   
   ## Begin: Create the format for result
@@ -319,11 +370,45 @@ if (true.net.filename != '')
   colnames(Result) <- list('TP', 'TN', 'FP', 'FN', 'TPR', 'FPR', 'FDR', 'PPV', 'ACC', 'MCC',  'F')
   # ## End: Create the format for result
   
-  ResultVsTrue <- calcPerfDiNet(predicted.net.adj.matrix, true.net.adj.matrix, Result, num.nodes)
+  if (is.matrix(true.net.adj.matrix)) {
+    ## True net is time-invariant. Therefore, 
+    ## 'true.net.adj.matrix' is a single matrix.
+    
+    predicted.net.adj.matrix <- rolled.dbn.adj.matrix
+    
+    ResultVsTrue <- calcPerfDiNet(predicted.net.adj.matrix, true.net.adj.matrix, Result, num.nodes)
+    rm(predicted.net.adj.matrix)
+    writeLines('Result ARTIVA vs True = \n')
+    print(ResultVsTrue)
+    rm(ResultVsTrue)
+    
+  } else if (is.list(true.net.adj.matrix)) {
+    ## True nets are time-varying. Therefore, 
+    ## 'true.net.adj.matrix' is a list of matrices.
+    
+    for (net.idx in 1:length(unrolled.dbn.adj.matrix.list)) {
+      
+      predicted.net.adj.matrix <- unrolled.dbn.adj.matrix.list[[net.idx]]
+      
+      ResultVsTrue <- calcPerfDiNet(predicted.net.adj.matrix, true.net.adj.matrix[[net.idx]], Result, num.nodes)
+      rm(predicted.net.adj.matrix)
+      Result <- rbind(Result, matrix(ResultVsTrue[1, ], nrow = 1, ncol = ncol(Result)))
+      
+      # rm(ResultVsTrue)
+    }
+    rm(net.idx)
+    
+    ## Print mean performance averaged over all time-varying networks
+    ResultVsTrue <- colMeans(Result)
+    ResultVsTrue <- matrix(colMeans(Result), nrow = 1, ncol = ncol(Result))
+    colnames(ResultVsTrue) <- colnames(Result)
+    writeLines('Result ARTIVA vs True = \n')
+    print(ResultVsTrue)
+    rm(ResultVsTrue)
+  }
+  
+  save(Result, file = paste(output.dirname, 'Result.RData', sep = '/'))
   rm(Result)
-  writeLines('Result ARTIVA vs True = \n')
-  print(ResultVsTrue)
-  rm(ResultVsTrue)
 }
 
 rm(rolled.dbn.adj.matrix)

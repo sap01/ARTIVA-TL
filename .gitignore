@@ -3,3 +3,8 @@
 .RData
 .Ruserdata
 packrat/lib*/
+packrat/bundles/
+
+## Data files
+asset/*.RData
+asset/*.tsv
