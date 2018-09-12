@@ -1,0 +1,10 @@
+{ 
+   "input.data.filename": "edi-data-8-1.tsv",
+   "num.timepts": 21,
+   "num.time.series": 23,
+   "true.net.filename": "edi.net.8.adj.mx.RData",
+   "max.fanin": null,
+   "num.itns": 50000,
+   "max.num.cp": 15,
+   "edge.post.prob.threshold": 0.5
+}
